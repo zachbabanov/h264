@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["general", "server"],
+  "properties": {
+    "general": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Own port (default: 8000)"
+        },
+        "source": {
+          "type": "string",
+          "description": "Stream source (mandatory)"
+        },
+        "encoded": {
+          "type": "boolean",
+          "description": "Encoding mode (default: false)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "server": {
+      "type": "object",
+      "required": ["ip", "port"],
+      "properties": {
+        "ip": {
+          "type": "string",
+          "description": "Server IP address (mandatory)"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Server port (mandatory)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "log": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Log file path (default: log/trace.log)"
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "description": "Log level 0–255 (default: 0)"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

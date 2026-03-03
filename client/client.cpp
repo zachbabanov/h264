@@ -1,0 +1,106 @@
+/*
+* @license
+* (C) zachbabanov
+*
+*/
+
+#include <socket/Interface.h>
+#include <rscoder/Encoder.h>
+#include <config/Config.h>
+#include <video/Stream.h>
+#include <log/Logger.h>
+
+#include <thread>
+#include <atomic>
+#include <vector>
+
+using namespace client;
+
+int main() {
+    auto& config = Config::Instance();
+    const bool encodingMode = config.EncodingMode();
+    const std::string serverIp = config.ServerIp();
+    const uint16_t serverPort = config.ServerPort();
+    const uint16_t ownPort = config.OwnPort();
+    const std::string streamSource = config.StreamSource();
+
+    std::atomic<bool> running{true};
+
+    SocketInterface socket(serverIp, serverPort, ownPort);
+    Logger::Instance().Info("Socket created");
+
+    rscoder::Encoder::Encoder encoder(8);
+    Logger::Instance().Info("Encoder created with 8 cells");
+
+    std::thread readerThread([&] {
+        h264::StreamReader& reader = h264::StreamReader::Instance();
+        reader.Open(streamSource);
+        Logger::Instance().Info(fmt::format("StreamReader opened: {}", streamSource));
+
+        std::vector<uint8_t> buffer(blockSize);
+        uint32_t blockIndex = 0;
+
+        while (running) {
+            int bytesRead = reader.ReadTo(buffer);
+
+            if (bytesRead < 0) {
+                Logger::Instance().Error("StreamReader::ReadTo failed");
+                running = false;
+                break;
+            }
+
+            if (bytesRead == 0) {
+                Logger::Instance().Info("End of stream reached");
+                break;
+            }
+
+            if (!encodingMode) {
+                auto packetOpt = composePacket(buffer.data(), blockSize);
+
+                if (!packetOpt) {
+                    Logger::Instance().Error("composePacket failed (non-encoded)");
+                    continue;
+                }
+
+                if (!socket.Send(std::move(*packetOpt))) {
+                    Logger::Instance().Error("Socket send failed (non-encoded)");
+                }
+            } else {
+                auto encodedPackets = encoder.Encode(buffer);
+
+                uint8_t packetIndex = 0;
+                for (auto& packetPayload : encodedPackets) {
+                    auto rsPacketOpt = composePacket(blockIndex, packetIndex, packetPayload.data(), fieldSize);
+
+                    if (!rsPacketOpt) {
+                        Logger::Instance().Error(fmt::format("composePacket failed for packet index {}", packetIndex));
+                        continue;
+                    }
+
+                    if (!socket.Send(std::move(*rsPacketOpt))) {
+                        Logger::Instance().Error(fmt::format("Socket send failed for packet index {}", packetIndex));
+                    }
+
+                    ++packetIndex;
+                }
+
+                ++blockIndex;
+            }
+
+            buffer.assign(1024, 0);
+        }
+
+        reader.Close();
+        Logger::Instance().Info("StreamReader closed");
+    });
+
+    if (!readerThread.joinable()) {
+        Logger::Instance().Info("Error while waiting or reader thread");
+        exit(1);
+    }
+
+    readerThread.join();
+
+    Logger::Instance().Info("Client shutting down");
+    return 0;
+}

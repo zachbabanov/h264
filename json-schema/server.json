@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["general"],
+  "properties": {
+    "general": {
+      "type": "object",
+      "required": ["port"],
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Own port (mandatory, default: 8000)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "log": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Log file path (default: log/trace.log)"
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "description": "Log level 0–255 (default: 0)"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
