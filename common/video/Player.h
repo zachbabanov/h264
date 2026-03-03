@@ -1,14 +1,15 @@
 /*
- * @license
- * (C) zachbabanov
- *
- */
+* @license
+* (C) zachbabanov
+*
+*/
 
 #pragma once
 
 #include <log/Logger.h>
 
 #include <condition_variable>
+#include <optional>
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -16,14 +17,15 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <map>
 
 extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavcodec/bsf.h>
 #include <libavformat/avformat.h>
-#include <libavutil/avutil.h>
+#include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
+#include <libavutil/avutil.h>
+#include <libavcodec/bsf.h>
 #include <SDL2/SDL.h>
 }
 
@@ -54,13 +56,44 @@ namespace h264 {
         Player(Player&&) = delete;
         Player& operator=(Player&&) = delete;
 
-        void AddData(std::vector<uint8_t> data) {
-            {
-                std::lock_guard<std::mutex> lock(_queueMutex);
-                _queue.insert(_queue.end(), data.begin(), data.end());
+        void AddBlock(uint32_t blockIndex, uint32_t naluIndex, uint32_t naluBlockSize, std::vector<uint8_t> data) {
+            std::lock_guard<std::mutex> lock(_assemblyMutex);
+
+            auto it = _assembling.find(naluIndex);
+
+            if (it == _assembling.end()) {
+                it = _assembling.emplace(naluIndex, NaluAssembly(naluBlockSize)).first;
             }
 
-            _queueCondVar.notify_one();
+            NaluAssembly& assembly = it->second;
+
+            if (blockIndex >= assembly.blocks.size()) {
+                Logger::Instance().Error(fmt::format("Invalid blockIndex {} for nalu {} with size {}", blockIndex, naluIndex, naluBlockSize));
+                return;
+            }
+
+            assembly.blocks[blockIndex] = std::move(data);
+
+            bool complete = true;
+
+            for (const auto& blk : assembly.blocks) {
+                if (!blk.has_value()) {
+                    complete = false;
+                    break;
+                }
+            }
+
+            if (complete) {
+                std::vector<uint8_t> fullNalu;
+
+                for (auto& blk : assembly.blocks) {
+                    fullNalu.insert(fullNalu.end(), blk->begin(), blk->end());
+                }
+
+                _assembling.erase(it);
+                _readyNalus[naluIndex] = std::move(fullNalu);
+                _assemblyCondVar.notify_one();
+            }
         }
 
         void Start() {
@@ -73,7 +106,7 @@ namespace h264 {
         void Stop() {
             if (_playerThread.joinable()) {
                 _stop = true;
-                _queueCondVar.notify_all();
+                _assemblyCondVar.notify_all();
                 _playerThread.request_stop();
                 _playerThread.join();
             }
@@ -84,6 +117,13 @@ namespace h264 {
         }
 
     private:
+        struct NaluAssembly {
+            uint32_t totalBlocks;
+            std::vector<std::optional<std::vector<uint8_t>>> blocks;
+
+            NaluAssembly(uint32_t total) : totalBlocks(total), blocks(total) {}
+        };
+
         void Run() {
             if (!CreateWindowAndRenderer()) {
                 Logger::Instance().Error("Failed to create SDL window and renderer");
@@ -104,58 +144,26 @@ namespace h264 {
                     }
                 }
 
-                {
-                    std::unique_lock<std::mutex> lock(_queueMutex);
-                    _queueCondVar.wait_until(lock, nextTick, [this] { return !_queue.empty() || _stop; });
-                }
+                std::unique_lock<std::mutex> lock(_assemblyMutex);
+
+                _assemblyCondVar.wait(lock, [this] {
+                    return _stop || (!_readyNalus.empty() && _readyNalus.begin()->first == _nextNaluIndex);
+                });
 
                 if (_stop) {
                     break;
                 }
 
-                {
-                    std::lock_guard<std::mutex> lock(_queueMutex);
+                auto it = _readyNalus.find(_nextNaluIndex);
+                if (it != _readyNalus.end()) {
+                    std::vector<uint8_t> nalu = std::move(it->second);
+                    _readyNalus.erase(it);
+                    _nextNaluIndex++;
+                    lock.unlock();
 
-                    if (!_queue.empty()) {
-                        _parseBuffer.insert(_parseBuffer.end(), _queue.begin(), _queue.end());
-                        _queue.clear();
-                    }
-                }
-
-                bool needMoreData = false;
-
-                while (!needMoreData && _parseOffset < _parseBuffer.size() && !_stop) {
-                    const uint8_t* data = _parseBuffer.data() + _parseOffset;
-                    int dataSize = static_cast<int>(_parseBuffer.size() - _parseOffset);
-
-                    int used = av_parser_parse2(_parser, _codecContext,
-                                                &_packet->data, &_packet->size,
-                                                data, dataSize,
-                                                AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-
-                    if (used < 0) {
-                        Logger::Instance().Error("Error parsing H.264 data");
-                        break;
-                    }
-
-                    _parseOffset += used;
-
-                    if (_packet->size > 0) {
-                        DecodeAndDisplay(_packet);
-                        av_packet_unref(_packet);
-                    } else {
-                        needMoreData = true;
-                    }
-                }
-
-                if (_parseOffset >= _parseBuffer.size()) {
-                    _parseBuffer.clear();
-                    _parseOffset = 0;
-                } else if (_parseOffset > 0) {
-                    size_t remaining = _parseBuffer.size() - _parseOffset;
-                    std::memmove(_parseBuffer.data(), _parseBuffer.data() + _parseOffset, remaining);
-                    _parseBuffer.resize(remaining);
-                    _parseOffset = 0;
+                    DecodeAndDisplayNalu(nalu);
+                } else {
+                    lock.unlock();
                 }
 
                 nextTick += tickInterval;
@@ -180,18 +188,10 @@ namespace h264 {
                 return false;
             }
 
-            _parser = av_parser_init(AV_CODEC_ID_H264);
-
-            if (!_parser) {
-                Logger::Instance().Error("Failed to create H.264 parser");
-                return false;
-            }
-
             _frame = av_frame_alloc();
-            _packet = av_packet_alloc();
 
-            if (!_frame || !_packet) {
-                Logger::Instance().Error("Failed to allocate frame or packet");
+            if (!_frame) {
+                Logger::Instance().Error("Failed to allocate frame");
                 return false;
             }
 
@@ -242,15 +242,29 @@ namespace h264 {
         }
 
         void Cleanup() {
-            av_parser_close(_parser);
             avcodec_free_context(&_codecContext);
             av_frame_free(&_frame);
-            av_packet_free(&_packet);
             sws_freeContext(_swsContext);
         }
 
-        void DecodeAndDisplay(AVPacket* pkt) {
+        void DecodeAndDisplayNalu(const std::vector<uint8_t>& nalu) {
+            AVPacket* pkt = av_packet_alloc();
+
+            if (!pkt) {
+                Logger::Instance().Error("Failed to allocate AVPacket");
+                return;
+            }
+
+            if (av_new_packet(pkt, static_cast<int>(nalu.size())) < 0) {
+                Logger::Instance().Error("Failed to allocate packet data");
+                av_packet_free(&pkt);
+                return;
+            }
+
+            std::memcpy(pkt->data, nalu.data(), nalu.size());
+
             int ret = avcodec_send_packet(_codecContext, pkt);
+            av_packet_free(&pkt);
 
             if (ret < 0) {
                 Logger::Instance().Error("Error sending packet to decoder");
@@ -307,17 +321,17 @@ namespace h264 {
             SDL_RenderPresent(_renderer);
         }
 
-        std::deque<uint8_t> _queue;
-        std::mutex _queueMutex;
-        std::condition_variable _queueCondVar;
+        std::map<uint32_t, NaluAssembly> _assembling;
+        std::map<uint32_t, std::vector<uint8_t>> _readyNalus;
+        uint32_t _nextNaluIndex{0};
+        std::mutex _assemblyMutex;
+        std::condition_variable _assemblyCondVar;
 
         std::jthread _playerThread;
         std::atomic<bool> _stop{false};
 
         AVCodecContext* _codecContext{nullptr};
-        AVCodecParserContext* _parser{nullptr};
         AVFrame* _frame{nullptr};
-        AVPacket* _packet{nullptr};
         SwsContext* _swsContext{nullptr};
 
         SDL_Window* _window{nullptr};
@@ -327,8 +341,5 @@ namespace h264 {
         int _width{0};
         int _height{0};
         AVPixelFormat _pixFmt{AV_PIX_FMT_NONE};
-
-        std::vector<uint8_t> _parseBuffer;
-        size_t _parseOffset{0};
     };
 }

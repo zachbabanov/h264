@@ -1,3 +1,9 @@
+/*
+* @license
+* (C) zachbabanov
+*
+*/
+
 #pragma once
 
 #include <log/Logger.h>
@@ -5,11 +11,12 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <mutex>
 
 extern "C" {
 #include <libavformat/avformat.h>
-#include <libavcodec/bsf.h>
 #include <libavutil/avutil.h>
+#include <libavcodec/bsf.h>
 }
 
 namespace h264 {
@@ -25,49 +32,35 @@ namespace h264 {
             return streamReaderInstance;
         }
 
-        int ReadTo(std::vector<uint8_t> &streamBlock) {
+        int ReadTo(std::vector<uint8_t>& buffer, uint32_t& outBlockIndex, uint32_t& outNaluIndex, uint32_t& outNaluBlockSize) {
             std::lock_guard<std::recursive_mutex> lock(_mutex);
 
-            if (!_formatContext) {
-                Logger::Instance().Error("Trying to read from unspecified source. First need to open it.");
-                return -1;
-            }
-
-            if (!_avPacket) {
-                Logger::Instance().Error("No FFMpeg av packet found in stream context");
-                return -1;
-            }
-
-            int totalBytesRead = 0;
-            while (totalBytesRead < streamBlock.size()) {
-                if (_avPacket->size == 0 || _videoStreamPosition >= _avPacket->size) {
-                    av_packet_unref(_avPacket);
-                    int packetReceiveResult = ReadPacketFromStream();
-
-                    if (packetReceiveResult < 0) {
-                        return -1;
-                    }
-
-                    if (packetReceiveResult == 0) {
-                        return totalBytesRead > 0 ? totalBytesRead : 0;
-                    }
+            if (_currentNALU.empty() || _currentNaluOffset >= _currentNALU.size()) {
+                if (!ExtractNextNalu()) {
+                    return 0;
                 }
-
-                if (!_avPacket->data || _avPacket->size <= 0) {
-                    Logger::Instance().Error("Invalid packet received (null data or zero size)");
-                    av_packet_unref(_avPacket);
-                    return -1;
-                }
-
-                int remainingBytes = _avPacket->size - _videoStreamPosition;
-                int bytesToCopy = std::min(remainingBytes, static_cast<int>(streamBlock.size() - totalBytesRead));
-                std::memcpy(streamBlock.data() + totalBytesRead, _avPacket->data + _videoStreamPosition, bytesToCopy);
-
-                totalBytesRead += bytesToCopy;
-                _videoStreamPosition += bytesToCopy;
             }
 
-            return totalBytesRead;
+            size_t naluSize = _currentNALU.size();
+            auto naluBlockSize = static_cast<uint32_t>((naluSize + blockSize - 1) / blockSize);
+            auto blockIndex = static_cast<uint32_t>(_currentNaluOffset / blockSize);
+            size_t bytesToCopy = std::min(blockSize, naluSize - _currentNaluOffset);
+
+            buffer.resize(bytesToCopy);
+            std::memcpy(buffer.data(), _currentNALU.data() + _currentNaluOffset, bytesToCopy);
+
+            outBlockIndex = blockIndex;
+            outNaluIndex = _currentNaluIndex;
+            outNaluBlockSize = naluBlockSize;
+            _currentNaluOffset += bytesToCopy;
+
+            if (_currentNaluOffset >= _currentNALU.size()) {
+                _currentNALU.clear();
+                _currentNaluOffset = 0;
+                _currentNaluIndex++;
+            }
+
+            return static_cast<int>(bytesToCopy);
         }
 
         void Open(const std::string& url) {
@@ -136,6 +129,12 @@ namespace h264 {
                     exit(1);
                 }
             }
+
+            _streamBuffer.clear();
+            _streamBufferOffset = 0;
+            _currentNALU.clear();
+            _currentNaluOffset = 0;
+            _currentNaluIndex = 0;
         }
 
         void Close() {
@@ -157,6 +156,11 @@ namespace h264 {
 
             _videoStreamId = -1;
             _videoStreamPosition = 0;
+            _streamBuffer.clear();
+            _streamBufferOffset = 0;
+            _currentNALU.clear();
+            _currentNaluOffset = 0;
+            _currentNaluIndex = 0;
         }
 
     private:
@@ -178,6 +182,59 @@ namespace h264 {
             Close();
             av_packet_free(&_avPacket);
             avformat_network_deinit();
+        }
+
+        bool ExtractNextNalu() {
+            while (true) {
+                size_t startPos = FindStartCode(_streamBuffer, _streamBufferOffset);
+                if (startPos != std::string::npos) {
+                    size_t endPos = FindStartCode(_streamBuffer, startPos + 3);
+                    if (endPos == std::string::npos) {
+                        endPos = _streamBuffer.size();
+                    }
+
+                    _currentNALU.assign(_streamBuffer.begin() + startPos, _streamBuffer.begin() + endPos);
+                    _streamBufferOffset = endPos;
+                    _currentNaluOffset = 0;
+
+                    return true;
+                } else {
+                    if (!FillStreamBuffer()) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        bool FillStreamBuffer() {
+            int ret = ReadPacketFromStream();
+            if (ret <= 0) {
+                return false;
+            }
+
+            if (_avPacket->size > 0 && _avPacket->data) {
+                _streamBuffer.insert(_streamBuffer.end(), _avPacket->data, _avPacket->data + _avPacket->size);
+            }
+
+            av_packet_unref(_avPacket);
+            return true;
+        }
+
+        size_t FindStartCode(const std::vector<uint8_t>& buf, size_t offset) {
+            static const std::vector<uint8_t> startCode3 = {0x00, 0x00, 0x01};
+            static const std::vector<uint8_t> startCode4 = {0x00, 0x00, 0x00, 0x01};
+
+            for (size_t i = offset; i + 2 < buf.size(); ++i) {
+                if (i + 3 < buf.size() && buf[i] == 0x00 && buf[i+1] == 0x00 && buf[i+2] == 0x00 && buf[i+3] == 0x01) {
+                    return i;
+                }
+
+                if (buf[i] == 0x00 && buf[i+1] == 0x00 && buf[i+2] == 0x01) {
+                    return i;
+                }
+            }
+
+            return std::string::npos;
         }
 
         int ReadPacketFromStream() {
@@ -211,6 +268,7 @@ namespace h264 {
                             }
 
                             int ret = av_read_frame(_formatContext, tempAvPacket);
+
                             if (ret < 0) {
                                 av_packet_free(&tempAvPacket);
 
@@ -299,5 +357,12 @@ namespace h264 {
         int _videoStreamId{-1};
 
         std::recursive_mutex _mutex;
+
+        std::vector<uint8_t> _streamBuffer;
+        size_t _streamBufferOffset{0};
+
+        std::vector<uint8_t> _currentNALU;
+        size_t _currentNaluOffset{0};
+        uint32_t _currentNaluIndex{0};
     };
 }

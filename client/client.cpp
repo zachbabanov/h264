@@ -39,9 +39,11 @@ int main() {
 
         std::vector<uint8_t> buffer(blockSize);
         uint32_t blockIndex = 0;
+        uint32_t naluIndex = 0;
+        uint32_t naluBlockSize = 0;
 
         while (running) {
-            int bytesRead = reader.ReadTo(buffer);
+            int bytesRead = reader.ReadTo(buffer, blockIndex, naluIndex, naluBlockSize);
 
             if (bytesRead < 0) {
                 Logger::Instance().Error("StreamReader::ReadTo failed");
@@ -55,7 +57,8 @@ int main() {
             }
 
             if (!encodingMode) {
-                auto packetOpt = composePacket(buffer.data(), blockSize);
+                auto packetOpt = composePacket(blockIndex, naluIndex, naluBlockSize,
+                                               buffer.data(), static_cast<uint16_t>(bytesRead));
 
                 if (!packetOpt) {
                     Logger::Instance().Error("composePacket failed (non-encoded)");
@@ -70,7 +73,8 @@ int main() {
 
                 uint8_t packetIndex = 0;
                 for (auto& packetPayload : encodedPackets) {
-                    auto rsPacketOpt = composePacket(blockIndex, packetIndex, packetPayload.data(), fieldSize);
+                    auto rsPacketOpt = composePacket(blockIndex, packetIndex, naluIndex, naluBlockSize,
+                                                     packetPayload.data(), fieldSize);
 
                     if (!rsPacketOpt) {
                         Logger::Instance().Error(fmt::format("composePacket failed for packet index {}", packetIndex));
@@ -83,11 +87,7 @@ int main() {
 
                     ++packetIndex;
                 }
-
-                ++blockIndex;
             }
-
-            buffer.assign(1024, 0);
         }
 
         reader.Close();
@@ -95,7 +95,7 @@ int main() {
     });
 
     if (!readerThread.joinable()) {
-        Logger::Instance().Info("Error while waiting or reader thread");
+        Logger::Instance().Error("Error while waiting or reader thread");
         exit(1);
     }
 
