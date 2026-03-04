@@ -18,6 +18,7 @@
 #include <mutex>
 
 #include <fmt/chrono.h>
+#include <fmt/ranges.h>
 #include <fmt/core.h>
 
 enum class LogLevel {

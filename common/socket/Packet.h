@@ -123,7 +123,11 @@ inline std::optional<std::variant<rs_packet_t, packet_t>> decomposePacket(const 
 
             uint16_t payloadSize;
             memcpy(&payloadSize, payloadBuffer + payloadSizeOffset, sizeof(payloadSize));
-            packet.header.payloadSize = htons(payloadSize);
+            packet.header.payloadSize = ntohs(payloadSize);
+
+            if (packet.header.payloadSize > blockSize) {
+                return std::nullopt;
+            }
 
             uint32_t blockIndex;
             memcpy(&blockIndex, payloadBuffer + blockIndexOffset, sizeof(blockIndex));
@@ -153,7 +157,11 @@ inline std::optional<std::variant<rs_packet_t, packet_t>> decomposePacket(const 
 
             uint16_t payloadSize;
             memcpy(&payloadSize, payloadBuffer + payloadSizeOffset, sizeof(payloadSize));
-            packet.header.payloadSize = htons(payloadSize);
+            packet.header.payloadSize = ntohs(payloadSize);
+
+            if (packet.header.payloadSize > fieldSize) {
+                return std::nullopt;
+            }
 
             uint32_t blockIndex;
             memcpy(&blockIndex, payloadBuffer + blockIndexOffset, sizeof(blockIndex));

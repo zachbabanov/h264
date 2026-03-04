@@ -73,7 +73,12 @@ public :
             return false;
         }
 
-        return send(_udpSocket, payloadBuffer, payloadLength, 0);
+        if (auto bytesSent = send(_udpSocket, payloadBuffer, payloadLength, 0); bytesSent < payloadLength) {
+            Logger::Instance().Error(fmt::format("Send failed: sent {} bytes, expected {}", bytesSent, payloadLength));
+            return false;
+        }
+
+        return true;
     }
 
     bool Send(packet_t &&packet) const {
@@ -82,7 +87,12 @@ public :
             return false;
         }
 
-        return send(_udpSocket, &packet, sizeof(packet), 0);
+        if (auto bytesSent = send(_udpSocket, &packet, sizeof(packet), 0); bytesSent < sizeof(packet)) {
+            Logger::Instance().Error(fmt::format("Send failed: sent {} bytes, expected {}", bytesSent, sizeof(packet)));
+            return false;
+        }
+
+        return true;
     }
 
     bool Send(rs_packet_t &&packet) const {
@@ -91,7 +101,12 @@ public :
             return false;
         }
 
-        return send(_udpSocket, &packet, sizeof(packet), 0);
+        if (auto bytesSent = send(_udpSocket, &packet, sizeof(packet), 0); bytesSent < sizeof(packet)) {
+            Logger::Instance().Error(fmt::format("Send failed: sent {} bytes, expected {}", bytesSent, sizeof(packet)));
+            return false;
+        }
+
+        return true;
     }
 
     bool Receive(char* receivedMessage, size_t receivedSize) const {

@@ -193,7 +193,9 @@ namespace h264 {
                         endPos = _streamBuffer.size();
                     }
 
-                    _currentNALU.assign(_streamBuffer.begin() + startPos, _streamBuffer.begin() + endPos);
+                    _currentNALU.assign(_streamBuffer.begin() + static_cast<long>(startPos),
+                                        _streamBuffer.begin() + static_cast<long>(endPos));
+
                     _streamBufferOffset = endPos;
                     _currentNaluOffset = 0;
 
@@ -220,10 +222,7 @@ namespace h264 {
             return true;
         }
 
-        size_t FindStartCode(const std::vector<uint8_t>& buf, size_t offset) {
-            static const std::vector<uint8_t> startCode3 = {0x00, 0x00, 0x01};
-            static const std::vector<uint8_t> startCode4 = {0x00, 0x00, 0x00, 0x01};
-
+        static size_t FindStartCode(const std::vector<uint8_t>& buf, size_t offset) {
             for (size_t i = offset; i + 2 < buf.size(); ++i) {
                 if (i + 3 < buf.size() && buf[i] == 0x00 && buf[i+1] == 0x00 && buf[i+2] == 0x00 && buf[i+3] == 0x01) {
                     return i;

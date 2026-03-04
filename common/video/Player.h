@@ -15,6 +15,7 @@
 #include <memory>
 #include <thread>
 #include <vector>
+#include <ranges>
 #include <deque>
 #include <mutex>
 #include <map>
@@ -90,6 +91,8 @@ namespace h264 {
                     fullNalu.insert(fullNalu.end(), blk->begin(), blk->end());
                 }
 
+                Logger::Instance().Debug(fmt::format("NALU {} complete, size {}", naluIndex, fullNalu.size()));
+
                 _assembling.erase(it);
                 _readyNalus[naluIndex] = std::move(fullNalu);
                 _assemblyCondVar.notify_one();
@@ -112,7 +115,7 @@ namespace h264 {
             }
         }
 
-        bool IsFinished() const {
+        [[nodiscard]] bool IsFinished() const {
             return _stop.load();
         }
 
@@ -121,7 +124,7 @@ namespace h264 {
             uint32_t totalBlocks;
             std::vector<std::optional<std::vector<uint8_t>>> blocks;
 
-            NaluAssembly(uint32_t total) : totalBlocks(total), blocks(total) {}
+            explicit NaluAssembly(uint32_t total) : totalBlocks(total), blocks(total) {}
         };
 
         void Run() {
@@ -156,13 +159,16 @@ namespace h264 {
 
                 auto it = _readyNalus.find(_nextNaluIndex);
                 if (it != _readyNalus.end()) {
+                    Logger::Instance().Debug(fmt::format("Current expected nalu {} found. Sending it to decode and display", it->first));
+
                     std::vector<uint8_t> nalu = std::move(it->second);
-                    _readyNalus.erase(it);
+                    _readyNalus.erase(it->first);
                     _nextNaluIndex++;
                     lock.unlock();
 
-                    DecodeAndDisplayNalu(nalu);
+                    DecodeAndDisplayNalu(it->first, nalu);
                 } else {
+                    Logger::Instance().Debug(fmt::format("Current expected nalu {} not found, skipping current cycle", _nextNaluIndex));
                     lock.unlock();
                 }
 
@@ -247,7 +253,15 @@ namespace h264 {
             sws_freeContext(_swsContext);
         }
 
-        void DecodeAndDisplayNalu(const std::vector<uint8_t>& nalu) {
+        void DecodeAndDisplayNalu(uint32_t naluIndex, const std::vector<uint8_t>& nalu) {
+            auto hexDebugString = [&nalu]() -> auto {
+                auto hex_strings = (nalu | std::views::take(8)) | std::views::transform([](uint8_t b) {
+                    return fmt::format("{:#04x}", b);
+                });
+
+                return fmt::format("{}", fmt::join(hex_strings, " "));
+            };
+
             AVPacket* pkt = av_packet_alloc();
 
             if (!pkt) {
@@ -263,22 +277,50 @@ namespace h264 {
 
             std::memcpy(pkt->data, nalu.data(), nalu.size());
 
-            int ret = avcodec_send_packet(_codecContext, pkt);
-            av_packet_free(&pkt);
+            int ret;
+            bool sent = false;
+            while (!sent) {
+                ret = avcodec_send_packet(_codecContext, pkt);
 
-            if (ret < 0) {
-                Logger::Instance().Error("Error sending packet to decoder");
-                return;
+                if (ret == 0) {
+                    sent = true;
+                } else if (ret == AVERROR(EAGAIN)) {
+                    while ((ret = avcodec_receive_frame(_codecContext, _frame)) == 0) {
+                        RenderFrame(_frame);
+                    }
+
+                    if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+                        Logger::Instance().Error(fmt::format("For nalu {}, error during receiving frames: {}. First 8 bytes of nalu: {}",
+                                                             naluIndex, ret, hexDebugString()));
+                        av_packet_free(&pkt);
+                        return;
+                    }
+                } else if (ret == AVERROR_INVALIDDATA) {
+                    Logger::Instance().Error(fmt::format("Invalid data for nalu {}, flushing decoder. First 8 bytes of nalu: {}",
+                                                         naluIndex, hexDebugString()));
+
+                    avcodec_flush_buffers(_codecContext);
+                    av_packet_free(&pkt);
+                    return;
+                } else {
+                    Logger::Instance().Error(fmt::format("For nalu {}, error sending packet to decoder: {}. First 8 bytes of nalu: {}",
+                                                         naluIndex, ret, hexDebugString()));
+
+                    av_packet_free(&pkt);
+                    return;
+                }
             }
 
-            while (ret >= 0) {
+            av_packet_free(&pkt);
+
+            while (true) {
                 ret = avcodec_receive_frame(_codecContext, _frame);
 
                 if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                    return;
+                    break;
                 } else if (ret < 0) {
-                    Logger::Instance().Error("Error during decoding");
-                    return;
+                    Logger::Instance().Error(fmt::format("Error during decoding: {}", ret));
+                    break;
                 }
 
                 if (_width != _frame->width || _height != _frame->height || _pixFmt != _frame->format) {
