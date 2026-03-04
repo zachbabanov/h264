@@ -21,13 +21,15 @@ static constexpr size_t fieldSize = blockSize >> 3;
  *    0                    1                   2                   3                   4
  *    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0
  *   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *   |     ENCODE MODE     |                        BLOCK INDEX
+ *   |     ENCODE MODE     |   PACKET INDEX    |              PAYLOAD SIZE             |
  *   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *   |     BLOCK INDEX     |   PACKET INDEX    |            NALU BLOCK INDEX           |
+ *   |                                   BLOCK INDEX                                   |
  *   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *   |            NALU BLOCK INDEX             |            NALU BLOCK SIZE            |
+ *   |                                NALU BLOCK INDEX                                 |
  *   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *   |             NALU BLOCK SIZE             |                PAYLOAD                |
+ *   |                                 NALU BLOCK SIZE                                 |
+ *   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *   |                                     PAYLOAD                                     |
  *   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
  *    ENCODE MODE is boolean and in case its value is false, all other fields consider absent,
@@ -36,8 +38,9 @@ static constexpr size_t fieldSize = blockSize >> 3;
 
 typedef struct {
     uint8_t encodeMode;
-    uint32_t blockIndex;
     uint8_t packetIndex;
+    uint16_t payloadSize;
+    uint32_t blockIndex;
     uint32_t naluIndex;
     uint32_t naluSize;
 } header_t;
@@ -54,11 +57,12 @@ typedef struct {
 #pragma pack(pop)
 
 static constexpr size_t headerSize = sizeof(header_t);
-static constexpr size_t payloadOffset = offsetof(packet_t, payload);
-static constexpr size_t blockIndexOffset = offsetof(header_t, blockIndex);
 static constexpr size_t packetIndexOffset = offsetof(header_t, packetIndex);
+static constexpr size_t payloadSizeOffset = offsetof(header_t, payloadSize);
+static constexpr size_t blockIndexOffset = offsetof(header_t, blockIndex);
 static constexpr size_t naluIndexOffset = offsetof(header_t, naluIndex);
 static constexpr size_t naluSizeOffset = offsetof(header_t, naluSize);
+static constexpr size_t payloadOffset = offsetof(packet_t, payload);
 
 inline std::optional<packet_t> composePacket(uint32_t blockIndex, uint32_t naluIndex, uint32_t naluSize,
                                              const uint8_t *payloadBuffer, uint16_t payloadLength) noexcept {
@@ -69,8 +73,9 @@ inline std::optional<packet_t> composePacket(uint32_t blockIndex, uint32_t naluI
     packet_t packet = {};
 
     packet.header.encodeMode = 0;
-    packet.header.blockIndex = htonl(blockIndex);
     packet.header.packetIndex = 0;
+    packet.header.payloadSize = htons(payloadLength);
+    packet.header.blockIndex = htonl(blockIndex);
     packet.header.naluIndex = htonl(naluIndex);
     packet.header.naluSize = htonl(naluSize);
     memcpy(packet.payload, payloadBuffer, payloadLength);
@@ -78,7 +83,7 @@ inline std::optional<packet_t> composePacket(uint32_t blockIndex, uint32_t naluI
     return packet;
 }
 
-inline std::optional<rs_packet_t> composePacket(uint32_t blockIndex, uint8_t packetIndex,
+inline std::optional<rs_packet_t> composePacket(uint32_t blockIndex, uint8_t packetIndex, uint16_t blockLength,
                                                 uint32_t naluIndex, uint32_t naluSize,
                                                 const uint8_t *payloadBuffer, uint16_t payloadLength) noexcept {
     if (payloadLength > fieldSize || !payloadBuffer) {
@@ -88,11 +93,12 @@ inline std::optional<rs_packet_t> composePacket(uint32_t blockIndex, uint8_t pac
     rs_packet_t packet = {};
 
     packet.header.encodeMode = 1;
-    packet.header.blockIndex = htonl(blockIndex);
     packet.header.packetIndex = packetIndex;
+    packet.header.payloadSize = htons(blockLength);
+    packet.header.blockIndex = htonl(blockIndex);
     packet.header.naluIndex = htonl(naluIndex);
     packet.header.naluSize = htonl(naluSize);
-    memcpy(packet.payload, payloadBuffer, payloadLength);
+    memcpy(packet.payload, payloadBuffer, fieldSize);
 
     return packet;
 }
@@ -113,12 +119,15 @@ inline std::optional<std::variant<rs_packet_t, packet_t>> decomposePacket(const 
             packet_t packet = {};
             memset(&packet, 0, sizeof(packet));
             packet.header.encodeMode = encodeMode;
+            packet.header.packetIndex = static_cast<uint8_t>(*(payloadBuffer + packetIndexOffset));
+
+            uint16_t payloadSize;
+            memcpy(&payloadSize, payloadBuffer + payloadSizeOffset, sizeof(payloadSize));
+            packet.header.payloadSize = htons(payloadSize);
 
             uint32_t blockIndex;
             memcpy(&blockIndex, payloadBuffer + blockIndexOffset, sizeof(blockIndex));
             packet.header.blockIndex = ntohl(blockIndex);
-
-            packet.header.packetIndex = static_cast<uint8_t>(*(payloadBuffer + packetIndexOffset));
 
             uint32_t naluIndex;
             memcpy(&naluIndex, payloadBuffer + naluIndexOffset, sizeof(naluIndex));
@@ -140,12 +149,15 @@ inline std::optional<std::variant<rs_packet_t, packet_t>> decomposePacket(const 
             rs_packet_t packet = {};
             memset(&packet, 0, sizeof(packet));
             packet.header.encodeMode = encodeMode;
+            packet.header.packetIndex = static_cast<uint8_t>(*(payloadBuffer + packetIndexOffset));
+
+            uint16_t payloadSize;
+            memcpy(&payloadSize, payloadBuffer + payloadSizeOffset, sizeof(payloadSize));
+            packet.header.payloadSize = htons(payloadSize);
 
             uint32_t blockIndex;
             memcpy(&blockIndex, payloadBuffer + blockIndexOffset, sizeof(blockIndex));
             packet.header.blockIndex = ntohl(blockIndex);
-
-            packet.header.packetIndex = static_cast<uint8_t>(*(payloadBuffer + packetIndexOffset));
 
             uint32_t naluIndex;
             memcpy(&naluIndex, payloadBuffer + naluIndexOffset, sizeof(naluIndex));

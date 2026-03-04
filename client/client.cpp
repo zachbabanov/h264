@@ -73,7 +73,7 @@ int main() {
 
                 uint8_t packetIndex = 0;
                 for (auto& packetPayload : encodedPackets) {
-                    auto rsPacketOpt = composePacket(blockIndex, packetIndex, naluIndex, naluBlockSize,
+                    auto rsPacketOpt = composePacket(blockIndex, packetIndex, bytesRead, naluIndex, naluBlockSize,
                                                      packetPayload.data(), fieldSize);
 
                     if (!rsPacketOpt) {

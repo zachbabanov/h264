@@ -40,14 +40,16 @@ int main() {
 
             if constexpr (std::is_same_v<T, packet_t>) {
                 uint32_t blockIndex = arg.header.blockIndex;
+                uint16_t payloadLength = arg.header.payloadSize;
                 uint32_t naluIndex = arg.header.naluIndex;
                 uint32_t naluBlockSize = arg.header.naluSize;
-                std::vector<uint8_t> data(arg.payload, arg.payload + blockSize);
+                std::vector<uint8_t> data(arg.payload, arg.payload + payloadLength);
                 player.AddBlock(blockIndex, naluIndex, naluBlockSize, std::move(data));
                 Logger::Instance().Debug("Received raw packet, added to player");
             } else if constexpr (std::is_same_v<T, rs_packet_t>) {
-                uint32_t blockIndex = arg.header.blockIndex;
                 uint8_t packetIndex = arg.header.packetIndex;
+                uint16_t payloadLength = arg.header.payloadSize;
+                uint32_t blockIndex = arg.header.blockIndex;
                 uint32_t naluIndex = arg.header.naluIndex;
                 uint32_t naluBlockSize = arg.header.naluSize;
                 std::vector<uint8_t> payload(arg.payload, arg.payload + fieldSize);
@@ -55,6 +57,7 @@ int main() {
                 auto decodedBlock = decoder.Decode(blockIndex, packetIndex, std::move(payload));
 
                 if (decodedBlock) {
+                    decodedBlock.value().resize(payloadLength);
                     player.AddBlock(blockIndex, naluIndex, naluBlockSize, std::move(*decodedBlock));
                     Logger::Instance().Info(fmt::format("Recovered block {} for nalu {}", blockIndex, naluIndex));
                 }
