@@ -159,10 +159,6 @@ inline std::optional<std::variant<rs_packet_t, packet_t>> decomposePacket(const 
             memcpy(&payloadSize, payloadBuffer + payloadSizeOffset, sizeof(payloadSize));
             packet.header.payloadSize = ntohs(payloadSize);
 
-            if (packet.header.payloadSize > fieldSize) {
-                return std::nullopt;
-            }
-
             uint32_t blockIndex;
             memcpy(&blockIndex, payloadBuffer + blockIndexOffset, sizeof(blockIndex));
             packet.header.blockIndex = ntohl(blockIndex);

@@ -135,6 +135,7 @@ namespace h264 {
 
             using namespace std::chrono_literals;
             constexpr auto tickInterval = 33ms;
+            constexpr auto assemblyTimeout = 100ms;
             auto nextTick = std::chrono::steady_clock::now();
 
             while (!_stop && !_playerThread.get_stop_token().stop_requested()) {
@@ -149,26 +150,38 @@ namespace h264 {
 
                 std::unique_lock<std::mutex> lock(_assemblyMutex);
 
-                _assemblyCondVar.wait(lock, [this] {
+                if (_assemblyCondVar.wait_for(lock, assemblyTimeout, [this] {
                     return _stop || (!_readyNalus.empty() && _readyNalus.begin()->first == _nextNaluIndex);
-                });
+                })) {
+                    if (_stop) {
+                        break;
+                    }
 
-                if (_stop) {
-                    break;
-                }
+                    auto it = _readyNalus.find(_nextNaluIndex);
 
-                auto it = _readyNalus.find(_nextNaluIndex);
-                if (it != _readyNalus.end()) {
-                    Logger::Instance().Debug(fmt::format("Current expected nalu {} found. Sending it to decode and display", it->first));
+                    if (it != _readyNalus.end()) {
+                        Logger::Instance().Debug(fmt::format("Current expected nalu {} found. Sending it to decode and display", it->first));
 
-                    std::vector<uint8_t> nalu = std::move(it->second);
-                    _readyNalus.erase(it->first);
-                    _nextNaluIndex++;
-                    lock.unlock();
+                        std::vector<uint8_t> nalu = std::move(it->second);
+                        _readyNalus.erase(it->first);
+                        _nextNaluIndex++;
+                        lock.unlock();
 
-                    DecodeAndDisplayNalu(it->first, nalu);
+                        DecodeAndDisplayNalu(it->first, nalu);
+                    } else {
+                        Logger::Instance().Warn(fmt::format("Unexpected: condition true but nalu {} not found", _nextNaluIndex));
+                        lock.unlock();
+                    }
                 } else {
-                    Logger::Instance().Debug(fmt::format("Current expected nalu {} not found, skipping current cycle", _nextNaluIndex));
+                    if (!_readyNalus.empty()) {
+                        uint32_t firstIndex = _readyNalus.begin()->first;
+                        if (firstIndex > _nextNaluIndex) {
+                            Logger::Instance().Warn(fmt::format("NALU {} is missing, skipping to next available {}",
+                                                                _nextNaluIndex, firstIndex));
+                            _nextNaluIndex = firstIndex;
+                        }
+                    }
+
                     lock.unlock();
                 }
 
@@ -296,10 +309,9 @@ namespace h264 {
                         return;
                     }
                 } else if (ret == AVERROR_INVALIDDATA) {
-                    Logger::Instance().Error(fmt::format("Invalid data for nalu {}, flushing decoder. First 8 bytes of nalu: {}",
-                                                         naluIndex, hexDebugString()));
+                    Logger::Instance().Warn(fmt::format("Invalid data for nalu {} (possibly duplicate SPS/PPS), skipping. First 8 bytes of nalu: {}",
+                                                        naluIndex, hexDebugString()));
 
-                    avcodec_flush_buffers(_codecContext);
                     av_packet_free(&pkt);
                     return;
                 } else {

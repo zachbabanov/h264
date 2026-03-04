@@ -68,13 +68,15 @@ int main() {
                 if (!socket.Send(std::move(*packetOpt))) {
                     Logger::Instance().Error("Socket send failed (non-encoded)");
                 }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             } else {
                 auto encodedPackets = encoder.Encode(buffer);
 
                 uint8_t packetIndex = 0;
                 for (auto& packetPayload : encodedPackets) {
                     auto rsPacketOpt = composePacket(blockIndex, packetIndex, bytesRead, naluIndex, naluBlockSize,
-                                                     packetPayload.data(), fieldSize);
+                                                     packetPayload.data(), packetPayload.size());
 
                     if (!rsPacketOpt) {
                         Logger::Instance().Error(fmt::format("composePacket failed for packet index {}", packetIndex));
@@ -87,6 +89,8 @@ int main() {
 
                     ++packetIndex;
                 }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         }
 

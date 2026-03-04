@@ -62,11 +62,12 @@ int main() {
                                                      "naluBlockSize: {}, payloadLength: {}", blockIndex, packetIndex, naluIndex,
                                                      naluBlockSize, payloadLength));
 
-                auto decodedBlock = decoder.Decode(blockIndex, packetIndex, std::move(payload));
+                uint32_t id = (naluIndex << 16) | blockIndex;
+                auto decodedBlock = decoder.Decode(id, packetIndex, std::move(payload));
 
                 if (decodedBlock) {
-                    Logger::Instance().Info(fmt::format("Recovered block {} for nalu {}. Added block to assemble in player",
-                                                        blockIndex, naluIndex));
+                    Logger::Instance().Info(fmt::format("Recovered block {} out of {} for nalu {}. Added block to assemble in player",
+                                                        blockIndex, naluBlockSize - 1, naluIndex));
 
                     decodedBlock.value().resize(payloadLength);
                     player.AddBlock(blockIndex, naluIndex, naluBlockSize, std::move(*decodedBlock));
