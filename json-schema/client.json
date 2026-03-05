@@ -1,32 +1,30 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["general", "server"],
+  "description": "Client configuration",
   "properties": {
-    "general": {
+    "log": {
       "type": "object",
-      "required": ["source"],
+      "description": "Logging settings (optional)",
       "properties": {
-        "port": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 65535,
-          "description": "Own port (default: 8000)"
-        },
-        "source": {
+        "path": {
           "type": "string",
-          "description": "Stream source (mandatory)"
+          "description": "Path to log file. Default: \"log/trace.log\"",
+          "default": "log/trace.log"
         },
-        "encoded": {
-          "type": "boolean",
-          "description": "Encoding mode (default: false)"
+        "level": {
+          "type": "integer",
+          "description": "Log level (0-255). Default: 0",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 0
         }
       },
       "additionalProperties": false
     },
     "server": {
       "type": "object",
-      "required": ["ip", "port"],
+      "description": "Server connection settings (mandatory)",
       "properties": {
         "ip": {
           "type": "string",
@@ -34,29 +32,39 @@
         },
         "port": {
           "type": "integer",
+          "description": "Server port (mandatory, 0-65535)",
           "minimum": 0,
-          "maximum": 65535,
-          "description": "Server port (mandatory)"
+          "maximum": 65535
         }
       },
+      "required": ["ip", "port"],
       "additionalProperties": false
     },
-    "log": {
+    "general": {
       "type": "object",
+      "description": "General client settings (mandatory)",
       "properties": {
-        "path": {
+        "source": {
           "type": "string",
-          "description": "Log file path (default: log/trace.log)"
+          "description": "Stream source (e.g., URL or file path) (mandatory)"
         },
-        "level": {
+        "port": {
           "type": "integer",
+          "description": "Local port for receiving data. Default: 8000",
           "minimum": 0,
-          "maximum": 255,
-          "description": "Log level 0–255 (default: 0)"
+          "maximum": 65535,
+          "default": 8000
+        },
+        "encoded": {
+          "type": "boolean",
+          "description": "Stream encoding mode. Default: false",
+          "default": false
         }
       },
+      "required": ["source"],
       "additionalProperties": false
     }
   },
+  "required": ["server", "general"],
   "additionalProperties": false
 }

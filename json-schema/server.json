@@ -1,37 +1,62 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["general"],
+  "description": "Server configuration",
   "properties": {
-    "general": {
+    "log": {
       "type": "object",
-      "required": ["port"],
+      "description": "Logging settings (optional)",
       "properties": {
-        "port": {
+        "path": {
+          "type": "string",
+          "description": "Path to log file. Default: \"log/trace.log\"",
+          "default": "log/trace.log"
+        },
+        "level": {
           "type": "integer",
+          "description": "Log level (0-255). Default: 0",
           "minimum": 0,
-          "maximum": 65535,
-          "description": "Own port (mandatory, default: 8000)"
+          "maximum": 255,
+          "default": 0
         }
       },
       "additionalProperties": false
     },
-    "log": {
+    "statistics": {
       "type": "object",
+      "description": "Statistics collection settings (optional)",
       "properties": {
         "path": {
           "type": "string",
-          "description": "Log file path (default: log/trace.log)"
+          "description": "Path to statistics file. Default: \"log/statistics.log\"",
+          "default": "log/statistics.log"
         },
-        "level": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 255,
-          "description": "Log level 0–255 (default: 0)"
+        "counters": {
+          "type": "array",
+          "description": "List of counter names to register. Default: [\"acceptedPackets\", \"acceptedBlocks\", \"expectedBlocks\", \"assembledNalu\", \"skippedNalu\"]",
+          "items": {
+            "type": "string"
+          },
+          "default": ["acceptedPackets", "acceptedBlocks", "expectedBlocks", "assembledNalu", "skippedNalu"]
         }
       },
       "additionalProperties": false
+    },
+    "general": {
+      "type": "object",
+      "description": "General server settings (mandatory)",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "description": "Server listening port (mandatory, 0-65535)",
+          "minimum": 0,
+          "maximum": 65535
+        }
+      },
+      "required": ["port"],
+      "additionalProperties": false
     }
   },
+  "required": ["general"],
   "additionalProperties": false
 }
