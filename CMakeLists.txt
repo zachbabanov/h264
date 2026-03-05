@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project(test_app)
+project(h264)
 
 set(CMAKE_CXX_STANDARD 23)
 
@@ -37,10 +37,10 @@ file(GLOB_RECURSE COMMON LIST_DIRECTORIES true "common/*")
 file(GLOB_RECURSE CLIENT_SOURCES LIST_DIRECTORIES true "client/*")
 file(GLOB_RECURSE SERVER_SOURCES LIST_DIRECTORIES true "server/*")
 
-add_executable(test_client ${COMMON} ${CLIENT_SOURCES})
-add_executable(test_server ${COMMON} ${SERVER_SOURCES})
+add_executable(client ${COMMON} ${CLIENT_SOURCES})
+add_executable(server ${COMMON} ${SERVER_SOURCES})
 
-target_link_libraries(test_client
+target_link_libraries(client
         PkgConfig::AVFORMAT
         PkgConfig::AVCODEC
         PkgConfig::AVUTIL
@@ -51,7 +51,7 @@ target_link_libraries(test_client
         rscoder
 )
 
-target_link_libraries(test_server
+target_link_libraries(server
         PkgConfig::AVFORMAT
         PkgConfig::AVCODEC
         PkgConfig::AVUTIL
