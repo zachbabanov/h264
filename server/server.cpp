@@ -27,6 +27,8 @@ int main() {
     h264::Player player;
     player.Start();
 
+    Statistics::Instance().Start();
+
     while (running) {
         auto received = socket.Receive();
 
@@ -34,6 +36,8 @@ int main() {
             Logger::Instance().Error("Socket receive failed or timeout");
             continue;
         }
+
+        Statistics::Instance().Increment(config::fields::ACCEPTED_PACKETS.data());
 
         std::visit([&](auto&& arg) {
             using T = std::decay_t<decltype(arg)>;

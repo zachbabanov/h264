@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <statistics/Statistics.h>
 #include <config/Parser.h>
 #include <config/Fields.h>
 #include <log/Logger.h>
@@ -21,8 +22,8 @@ namespace client {
         Config& operator=(Config&&) = delete;
 
         static Config& Instance() {
-            static Config confidDiInstance;
-            return confidDiInstance;
+            static Config configInstance;
+            return configInstance;
         }
 
         [[nodiscard]] std::string ServerIp() const {
@@ -237,8 +238,8 @@ namespace server {
         Config& operator=(Config&&) = delete;
 
         static Config& Instance() {
-            static Config instance;
-            return instance;
+            static Config configInstance;
+            return configInstance;
         }
 
         [[nodiscard]] std::string LogPath() const {
@@ -307,6 +308,46 @@ namespace server {
             Logger::Instance().Info(fmt::format("\t_logPath: {}", _logPath));
             Logger::Instance().Info(fmt::format("\t_logLevel: {}", _logLevel));
 
+            auto statSectionIt = jsonConfig->FindMember(config::fields::STAT_SECTION.data());
+
+            if (statSectionIt != jsonConfig->MemberEnd()) {
+                auto &statSectionVal = statSectionIt->value;
+
+                if (auto path = statSectionVal.FindMember(config::fields::PATH.data());
+                        path != statSectionVal.MemberEnd()) {
+                    if (!path->value.IsString()) {
+                        Logger::Instance().Error("Config file server.json optional section <statistics> optional field <path> has wrong type");
+                        exit(1);
+                    }
+
+                    _statPath = path->value.GetString();
+                    Statistics::Instance().SetFilePath(_statPath);
+                }
+
+                if (auto countersList = statSectionVal.FindMember(config::fields::COUNTERS.data());
+                        countersList != statSectionVal.MemberEnd()) {
+                    if (!countersList->value.IsArray()) {
+                        Logger::Instance().Error("Config file server.json optional section <statistics> optional field <counters> has wrong type");
+                        exit(1);
+                    }
+
+                    for (auto &counter : countersList->value.GetArray()) {
+                        if (!counter.IsString()) {
+                            Logger::Instance().Error("Config file server.json optional section <statistics> optional field <counters> has element with wrong type");
+                            exit(1);
+                        }
+
+                        _counters.emplace_back(counter.GetString());
+                    }
+                }
+            }
+
+            Logger::Instance().Info("Finished reading config file server.json optional section <statistics>");
+            Logger::Instance().Info(fmt::format("\t_statPath: {}", _statPath));
+            Logger::Instance().Info(fmt::format("\t_counters: {}", _counters));
+
+            Statistics::Instance().RegisterCounters(_counters);
+
             auto generalSectionIt = jsonConfig->FindMember(config::fields::GENERAL_SECTION.data());
 
             if (generalSectionIt != jsonConfig->MemberEnd()) {
@@ -343,6 +384,11 @@ namespace server {
 
         std::string _logPath{config::fields::DEFAULT_LOG_PATH};
         uint8_t _logLevel{0};
+
+        std::string _statPath{config::fields::DEFAULT_STAT_PATH};
+        std::vector<std::string> _counters{config::fields::ACCEPTED_PACKETS.data(), config::fields::ACCEPTED_BLOCKS.data(),
+                                           config::fields::EXPECTED_BLOCKS.data(), config::fields::ASSEMBLED_NALU.data(),
+                                           config::fields::SKIPPED_NALU.data()};
 
         mutable std::shared_mutex _mutex;
     };

@@ -104,7 +104,7 @@ inline std::optional<rs_packet_t> composePacket(uint32_t blockIndex, uint8_t pac
 }
 
 inline std::optional<std::variant<rs_packet_t, packet_t>> decomposePacket(const uint8_t *payloadBuffer, uint16_t payloadLength) noexcept {
-    if (payloadLength < 2 || !payloadBuffer) {
+    if (payloadLength < headerSize || !payloadBuffer) {
         return std::nullopt;
     }
 

@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <statistics/Statistics.h>
 #include <log/Logger.h>
 
 #include <condition_variable>
@@ -60,10 +61,14 @@ namespace h264 {
         void AddBlock(uint32_t blockIndex, uint32_t naluIndex, uint32_t naluBlockSize, std::vector<uint8_t> data) {
             std::lock_guard<std::mutex> lock(_assemblyMutex);
 
+            server::Statistics::Instance().Increment(config::fields::ACCEPTED_BLOCKS.data());
+
             auto it = _assembling.find(naluIndex);
 
             if (it == _assembling.end()) {
                 it = _assembling.emplace(naluIndex, NaluAssembly(naluBlockSize)).first;
+
+                server::Statistics::Instance().Increment(config::fields::EXPECTED_BLOCKS.data(), naluBlockSize);
             }
 
             NaluAssembly& assembly = it->second;
@@ -92,6 +97,7 @@ namespace h264 {
                 }
 
                 Logger::Instance().Debug(fmt::format("NALU {} complete, size {}", naluIndex, fullNalu.size()));
+                server::Statistics::Instance().Increment(config::fields::ASSEMBLED_NALU.data());
 
                 _assembling.erase(it);
                 _readyNalus[naluIndex] = std::move(fullNalu);
@@ -170,6 +176,8 @@ namespace h264 {
                         DecodeAndDisplayNalu(it->first, nalu);
                     } else {
                         Logger::Instance().Warn(fmt::format("Unexpected: condition true but nalu {} not found", _nextNaluIndex));
+                        server::Statistics::Instance().Increment(config::fields::SKIPPED_NALU.data());
+
                         lock.unlock();
                     }
                 } else {
@@ -178,6 +186,8 @@ namespace h264 {
                         if (firstIndex > _nextNaluIndex) {
                             Logger::Instance().Warn(fmt::format("NALU {} is missing, skipping to next available {}",
                                                                 _nextNaluIndex, firstIndex));
+                            server::Statistics::Instance().Increment(config::fields::SKIPPED_NALU.data());
+
                             _nextNaluIndex = firstIndex;
                         }
                     }
@@ -305,6 +315,7 @@ namespace h264 {
                     if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
                         Logger::Instance().Error(fmt::format("For nalu {}, error during receiving frames: {}. First 8 bytes of nalu: {}",
                                                              naluIndex, ret, hexDebugString()));
+
                         av_packet_free(&pkt);
                         return;
                     }

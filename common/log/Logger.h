@@ -48,7 +48,8 @@ public:
         std::ofstream newFile(path, std::ios::trunc);
 
         if (!newFile.is_open()) {
-            throw std::runtime_error("Log file cannot be opened/created: " + path);
+            std::cerr << "Log file cannot be opened/created: " << path << std::endl ;
+            exit(1);
         }
 
         {
@@ -103,6 +104,7 @@ private:
 
     ~Logger() {
         std::lock_guard<std::mutex> lock(_mutex);
+
         if (_file.is_open()) {
             _file.close();
         }
@@ -156,7 +158,7 @@ private:
     }
 
     std::string _filePath{config::fields::DEFAULT_LOG_PATH};
+    std::atomic<LogLevel> _level{LogLevel::Debug};
     std::ofstream _file;
     std::mutex _mutex;
-    std::atomic<LogLevel> _level{LogLevel::Debug};
 };
