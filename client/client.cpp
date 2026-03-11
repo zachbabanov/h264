@@ -88,7 +88,8 @@ int main() {
                     }
 
                     if (socket.ReceiveNonBlocking()) {
-                        Logger::Instance().Info(fmt::format("Received signal to stop send encoded packets from server for block: {}", blockIndex));
+                        Logger::Instance().Debug(fmt::format("Received signal to stop send encoded packets from server for block: {}, nalu: {}",
+                                                             blockIndex, naluIndex));
                         break;
                     }
 
