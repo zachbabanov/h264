@@ -83,8 +83,13 @@ int main() {
                         continue;
                     }
 
-                    if (!socket.Send(std::move(*rsPacketOpt))) {
+                    if (!socket.SendNonBlocking(std::move(*rsPacketOpt))) {
                         Logger::Instance().Error(fmt::format("Socket send failed for packet index {}", packetIndex));
+                    }
+
+                    if (socket.ReceiveNonBlocking()) {
+                        Logger::Instance().Info(fmt::format("Received signal to stop send encoded packets from server for block: {}", blockIndex));
+                        break;
                     }
 
                     ++packetIndex;

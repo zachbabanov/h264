@@ -29,11 +29,16 @@ int main() {
 
     Statistics::Instance().Start();
 
+    struct sockaddr_in clientAddress;
+
     while (running) {
-        auto received = socket.Receive();
+        auto received = socket.ReceiveFromNonBlocking(clientAddress);
 
         if (!received) {
-            Logger::Instance().Error("Socket receive failed or timeout");
+            if (errno != EAGAIN) {
+                Logger::Instance().Error("Socket receive failed or timeout");
+            }
+
             continue;
         }
 
@@ -72,6 +77,8 @@ int main() {
                 if (decodedBlock) {
                     Logger::Instance().Info(fmt::format("Recovered block {} out of {} for nalu {}. Added block to assemble in player",
                                                         blockIndex, naluBlockSize - 1, naluIndex));
+
+                    socket.SendToNonBlocking(std::move(arg), clientAddress);
 
                     decodedBlock.value().resize(payloadLength);
                     player.AddBlock(blockIndex, naluIndex, naluBlockSize, std::move(*decodedBlock));
