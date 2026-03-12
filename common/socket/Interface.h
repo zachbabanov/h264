@@ -239,7 +239,6 @@ public :
 
         if (receiveResult < 0) {
             if (errno == EAGAIN) {
-                Logger::Instance().Debug("Empty receive buffer for non-blocking receive on <server> socket");
                 return false;
             }
 
@@ -257,7 +256,6 @@ public :
 
         if (receivedSize < 0) {
             if (errno == EAGAIN) {
-                Logger::Instance().Debug("Empty receive buffer for non-blocking receive on <server> socket");
                 return std::nullopt;
             }
 
@@ -275,7 +273,6 @@ public :
 
         if (receiveResult < 0) {
             if (errno == EAGAIN) {
-                Logger::Instance().Debug("Empty receive buffer for non-blocking receive on <server> socket");
                 return false;
             }
 
@@ -295,7 +292,6 @@ public :
 
         if (receivedSize < 0) {
             if (errno == EAGAIN) {
-                Logger::Instance().Debug("Empty receive buffer for non-blocking receive on <server> socket");
                 return std::nullopt;
             }
 
