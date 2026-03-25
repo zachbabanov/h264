@@ -139,9 +139,8 @@ namespace h264 {
                 return;
             }
 
-            using namespace std::chrono_literals;
-            constexpr auto tickInterval = 33ms;
-            constexpr auto assemblyTimeout = 100ms;
+            const auto tickInterval = std::chrono::milliseconds(server::Config::Instance().BufferInterval());
+            const auto assemblyTimeout = std::chrono::milliseconds(server::Config::Instance().FrameTimeout());
             auto nextTick = std::chrono::steady_clock::now();
 
             while (!_stop && !_playerThread.get_stop_token().stop_requested()) {

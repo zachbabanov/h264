@@ -83,20 +83,14 @@ int main() {
                         continue;
                     }
 
-                    if (!socket.SendNonBlocking(std::move(*rsPacketOpt))) {
+                    if (!socket.Send(std::move(*rsPacketOpt))) {
                         Logger::Instance().Error(fmt::format("Socket send failed for packet index {}", packetIndex));
                     }
 
-                    if (socket.ReceiveNonBlocking()) {
-                        Logger::Instance().Debug(fmt::format("Received signal to stop send encoded packets from server for block: {}, nalu: {}",
-                                                             blockIndex, naluIndex));
-                        break;
-                    }
-
                     ++packetIndex;
-                }
 
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    std::this_thread::sleep_for(std::chrono::microseconds(5));
+                }
             }
         }
 

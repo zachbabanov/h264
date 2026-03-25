@@ -257,6 +257,21 @@ namespace server {
             return _ownPort;
         }
 
+        [[nodiscard]] int ReceiveBufferSize() const {
+            std::shared_lock lock(_mutex);
+            return _rxBufferSize;
+        }
+
+        [[nodiscard]] uint32_t BufferInterval() const {
+            std::shared_lock lock(_mutex);
+            return _bufferInterval;
+        }
+
+        [[nodiscard]] uint32_t FrameTimeout() const {
+            std::shared_lock lock(_mutex);
+            return _frameTimeout;
+        }
+
     private:
         Config() {
             auto jsonConfig = config::parser::Read(config::fields::SERVER_CONFIG_PATH.data());
@@ -348,6 +363,36 @@ namespace server {
 
             Statistics::Instance().RegisterCounters(_counters);
 
+            auto playerSectionIt = jsonConfig->FindMember(config::fields::PLAYER_SECTION.data());
+
+            if (playerSectionIt != jsonConfig->MemberEnd()) {
+                auto &playerSectionVal = playerSectionIt->value;
+
+                if (auto bufferInterval = playerSectionVal.FindMember(config::fields::BUFFER_INTERVAL.data());
+                        bufferInterval != playerSectionVal.MemberEnd()) {
+                    if (!bufferInterval->value.IsUint()) {
+                        Logger::Instance().Error("Config file server.json optional section <player> optional field <bufferInterval> has wrong type");
+                        exit(1);
+                    }
+
+                    _bufferInterval = bufferInterval->value.GetUint();
+                }
+
+                if (auto frameTimeout = playerSectionVal.FindMember(config::fields::FRAME_ASSEMBLY_TIMEOUT.data());
+                        frameTimeout != playerSectionVal.MemberEnd()) {
+                    if (!frameTimeout->value.IsUint()) {
+                        Logger::Instance().Error("Config file server.json optional section <player> optional field <frameTimeout> has wrong type");
+                        exit(1);
+                    }
+
+                    _frameTimeout = frameTimeout->value.GetUint();
+                }
+            }
+
+            Logger::Instance().Info("Finished reading config file server.json optional section <player>");
+            Logger::Instance().Info(fmt::format("\t_bufferInterval: {}", _bufferInterval));
+            Logger::Instance().Info(fmt::format("\t_frameTimeout: {}", _frameTimeout));
+
             auto generalSectionIt = jsonConfig->FindMember(config::fields::GENERAL_SECTION.data());
 
             if (generalSectionIt != jsonConfig->MemberEnd()) {
@@ -372,6 +417,16 @@ namespace server {
 
                     _ownPort = ownPort->value.GetUint();
                 }
+
+                if (auto rxBufferSize = generalSectionVal.FindMember(config::fields::SOCKET_SIZE.data());
+                        rxBufferSize != generalSectionVal.MemberEnd()) {
+                    if (!rxBufferSize->value.IsInt()) {
+                        Logger::Instance().Error("Config file server.json mandatory section <general> optional field <port> has wrong type");
+                        exit(1);
+                    }
+
+                    _rxBufferSize = rxBufferSize->value.GetInt();
+                }
             }
 
             Logger::Instance().Info("Finished reading config file server.json mandatory section <general>");
@@ -381,9 +436,13 @@ namespace server {
         ~Config() = default;
 
         uint16_t _ownPort{8000};
+        int _rxBufferSize{65536};
 
         std::string _logPath{config::fields::DEFAULT_LOG_PATH};
         uint8_t _logLevel{0};
+
+        uint32_t _bufferInterval{33}; // 33 ms is single frame time for 30 fps video
+        uint32_t _frameTimeout{100};
 
         std::string _statPath{config::fields::DEFAULT_STAT_PATH};
         std::vector<std::string> _counters{config::fields::ACCEPTED_PACKETS.data(), config::fields::ACCEPTED_BLOCKS.data(),

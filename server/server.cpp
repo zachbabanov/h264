@@ -18,9 +18,10 @@ using namespace server;
 int main() {
     auto& config = Config::Instance();
     const uint16_t ownPort = config.OwnPort();
+    const int rxBuferSize = config.ReceiveBufferSize();
 
     std::atomic<bool> running{true};
-    SocketInterface socket(ownPort);
+    SocketInterface socket(ownPort, rxBuferSize);
     Logger::Instance().Info("SocketInterface created");
 
     rscoder::Decimation::Decoder decoder;
@@ -29,10 +30,8 @@ int main() {
 
     Statistics::Instance().Start();
 
-    struct sockaddr_in clientAddress;
-
     while (running) {
-        auto received = socket.ReceiveFromNonBlocking(clientAddress);
+        auto received = socket.ReceiveNonBlocking();
 
         if (!received) {
             if (errno != EAGAIN) {
@@ -77,8 +76,6 @@ int main() {
                 if (decodedBlock) {
                     Logger::Instance().Info(fmt::format("Recovered block {} out of {} for nalu {}. Added block to assemble in player",
                                                         blockIndex, naluBlockSize - 1, naluIndex));
-
-                    socket.SendToNonBlocking(std::move(arg), clientAddress);
 
                     decodedBlock.value().resize(payloadLength);
                     player.AddBlock(blockIndex, naluIndex, naluBlockSize, std::move(*decodedBlock));

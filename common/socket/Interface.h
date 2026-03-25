@@ -48,7 +48,7 @@ public :
         }
     }
 
-    explicit SocketInterface(uint16_t ownPort = 8000) {
+    explicit SocketInterface(uint16_t ownPort = 8000, int rxBufferSize = 65536) {
         _udpSocket = socket(AF_INET, SOCK_DGRAM, 0);
 
         if (_udpSocket < 0) {
@@ -59,6 +59,12 @@ public :
         _ownAddress.sin_family = AF_INET;
         _ownAddress.sin_port = htons(ownPort);
         _ownAddress.sin_addr.s_addr = INADDR_ANY;
+
+        if (setsockopt(_udpSocket, SOL_SOCKET, SO_RCVBUF, &rxBufferSize, sizeof(rxBufferSize)) == -1) {
+            Logger::Instance().Error("Failed to set receive buffer size on <server> socket");
+            close(_udpSocket);
+            exit(1);
+        }
 
         if (bind(_udpSocket, reinterpret_cast<struct sockaddr*>(&_ownAddress), sizeof(_ownAddress)) < 0) {
             Logger::Instance().Error("Failed to bind incoming connection to specified port");

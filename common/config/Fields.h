@@ -18,6 +18,7 @@ namespace config::fields {
     static constexpr std::string_view LOG_SECTION{"log"};
     static constexpr std::string_view SERVER_SECTION{"server"};
     static constexpr std::string_view GENERAL_SECTION{"general"};
+    static constexpr std::string_view PLAYER_SECTION{"player"};
     static constexpr std::string_view STAT_SECTION{"statistics"};
 
     static constexpr std::string_view IP{"ip"};
@@ -26,6 +27,10 @@ namespace config::fields {
     static constexpr std::string_view ENCODING_MODE{"encoded"};
 
     static constexpr std::string_view STREAM_SOURCE{"source"};
+
+    static constexpr std::string_view SOCKET_SIZE{"rxBufferSize"};
+    static constexpr std::string_view BUFFER_INTERVAL{"bufferInterval"};
+    static constexpr std::string_view FRAME_ASSEMBLY_TIMEOUT{"frameTimeout"};
 
     static constexpr std::string_view PATH{"path"};
     static constexpr std::string_view LEVEL{"level"};
