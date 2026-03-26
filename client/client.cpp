@@ -68,8 +68,6 @@ int main() {
                 if (!socket.Send(std::move(*packetOpt))) {
                     Logger::Instance().Error("Socket send failed (non-encoded)");
                 }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             } else {
                 auto encodedPackets = encoder.Encode(buffer);
 
@@ -88,10 +86,7 @@ int main() {
                     }
 
                     ++packetIndex;
-                    std::this_thread::sleep_for(std::chrono::microseconds(0));
                 }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         }
 
