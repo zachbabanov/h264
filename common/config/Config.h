@@ -61,6 +61,16 @@ namespace client {
             return _encodingMode;
         }
 
+        [[nodiscard]] uint8_t PacketAmount() const {
+            std::shared_lock lock(_mutex);
+            return _packetAmount;
+        }
+
+        [[nodiscard]] uint32_t InterPacketGap() const {
+            std::shared_lock lock(_mutex);
+            return _interPacketGap;
+        }
+
     private:
         Config() {
             auto jsonConfig = config::parser::Read(config::fields::CLIENT_CONFIG_PATH.data());
@@ -162,6 +172,48 @@ namespace client {
             Logger::Instance().Info(fmt::format("\t_serverIp: {}", _serverIp));
             Logger::Instance().Info(fmt::format("\t_serverPort: {}", _serverPort));
 
+            auto packetSectionIt = jsonConfig->FindMember(config::fields::PACKET_SECTION.data());
+
+            if (packetSectionIt != jsonConfig->MemberEnd()) {
+                auto &packetSectionVal = packetSectionIt->value;
+
+                if (auto encodingMode = packetSectionVal.FindMember(config::fields::ENCODING_MODE.data());
+                        encodingMode != packetSectionVal.MemberEnd()) {
+                    if (!encodingMode->value.IsBool()) {
+                        Logger::Instance().Error("Config file client.json optional section <packet> optional field <encoding> has wrong type");
+                        exit(1);
+                    }
+
+                    _encodingMode = encodingMode->value.GetBool();
+                }
+
+                if (auto packetAmount = packetSectionVal.FindMember(config::fields::PACKETS_AMOUNT.data());
+                        packetAmount != packetSectionVal.MemberEnd()) {
+                    if (!packetAmount->value.IsUint()) {
+                        Logger::Instance().Error("Config file client.json optional section <packet> optional field <amount> has wrong type");
+                        exit(1);
+                    }
+
+                    _packetAmount = packetAmount->value.GetUint();
+
+                    if (_packetAmount > 255 || _packetAmount < 8) {
+                        Logger::Instance().Error(fmt::format("Config file client.json optional section <packet> optional"
+                                                             "field <amount> has wrong value {}, expected value in range <8-255>", _packetAmount));
+                        exit(1);
+                    }
+                }
+
+                if (auto interPacketGap = packetSectionVal.FindMember(config::fields::LEVEL.data());
+                        interPacketGap != packetSectionVal.MemberEnd()) {
+                    if (!interPacketGap->value.IsUint()) {
+                        Logger::Instance().Error("Config file client.json optional section <packet> optional field <gap> has wrong type");
+                        exit(1);
+                    }
+
+                    _interPacketGap = interPacketGap->value.GetUint();
+                }
+            }
+
             auto generalSectionIt = jsonConfig->FindMember(config::fields::GENERAL_SECTION.data());
 
             if (generalSectionIt != jsonConfig->MemberEnd()) {
@@ -196,16 +248,6 @@ namespace client {
 
                     _streamSource = source->value.GetString();
                 }
-
-                if (auto encodingMode = generalSectionVal.FindMember(config::fields::ENCODING_MODE.data());
-                        encodingMode != generalSectionVal.MemberEnd()) {
-                    if (!encodingMode->value.IsBool()) {
-                        Logger::Instance().Error("Config file client.json mandatory section <general> optional field <encoding> has wrong type");
-                        exit(1);
-                    }
-
-                    _encodingMode = encodingMode->value.GetBool();
-                }
             }
 
             Logger::Instance().Info("Finished reading config file client.json mandatory section <general>");
@@ -223,7 +265,10 @@ namespace client {
         std::string _streamSource;
         std::string _logPath{config::fields::DEFAULT_LOG_PATH};
         uint8_t _logLevel{0};
+
         bool _encodingMode{false};
+        uint8_t _packetAmount{255};
+        uint32_t _interPacketGap{0};
 
         mutable std::shared_mutex _mutex;
     };

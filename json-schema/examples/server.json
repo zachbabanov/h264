@@ -1,0 +1,14 @@
+{
+  "general": {
+    "port": 8001,
+    "rxBufferSize": 8388608
+  },
+  "player": {
+    "bufferInterval": 33,
+    "frameTimeout": 1000
+  },
+  "log": {
+    "path": "./log/server.log",
+    "level": 0
+  }
+}

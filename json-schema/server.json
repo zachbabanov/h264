@@ -42,6 +42,25 @@
       },
       "additionalProperties": false
     },
+    "player": {
+      "type": "object",
+      "description": "Player/stream processing settings (optional)",
+      "properties": {
+        "bufferInterval": {
+          "type": "integer",
+          "description": "Buffer interval in milliseconds. Default: 33",
+          "minimum": 0,
+          "default": 33
+        },
+        "frameTimeout": {
+          "type": "integer",
+          "description": "Frame assembly timeout in milliseconds. Default: 100",
+          "minimum": 0,
+          "default": 100
+        }
+      },
+      "additionalProperties": false
+    },
     "general": {
       "type": "object",
       "description": "General server settings (mandatory)",
@@ -51,6 +70,12 @@
           "description": "Server listening port (mandatory, 0-65535)",
           "minimum": 0,
           "maximum": 65535
+        },
+        "rxBufferSize": {
+          "type": "integer",
+          "description": "Socket receive buffer size in bytes. Default: 65536",
+          "minimum": 0,
+          "default": 65536
         }
       },
       "required": ["port"],

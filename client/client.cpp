@@ -23,6 +23,8 @@ int main() {
     const uint16_t serverPort = config.ServerPort();
     const uint16_t ownPort = config.OwnPort();
     const std::string streamSource = config.StreamSource();
+    const uint8_t interPacketGap = config.InterPacketGap();
+    const uint32_t packetAmount = config.PacketAmount();
 
     std::atomic<bool> running{true};
 
@@ -85,7 +87,13 @@ int main() {
                         Logger::Instance().Error(fmt::format("Socket send failed for packet index {}", packetIndex));
                     }
 
+                    if (packetIndex == packetAmount) {
+                        break;
+                    }
+
                     ++packetIndex;
+
+                    std::this_thread::sleep_for(std::chrono::microseconds(interPacketGap));
                 }
             }
         }

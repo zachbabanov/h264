@@ -54,14 +54,34 @@
           "minimum": 0,
           "maximum": 65535,
           "default": 8000
-        },
-        "encoded": {
-          "type": "boolean",
-          "description": "Stream encoding mode. Default: false",
-          "default": false
         }
       },
       "required": ["source"],
+      "additionalProperties": false
+    },
+    "packet": {
+      "type": "object",
+      "description": "Packet processing settings (optional)",
+      "properties": {
+        "encoded": {
+          "type": "boolean",
+          "description": "Enable Reed-Solomon encoding. Default: false",
+          "default": false
+        },
+        "amount": {
+          "type": "integer",
+          "description": "Number of encoded packets per block (8-255). Default: 255",
+          "minimum": 8,
+          "maximum": 255,
+          "default": 255
+        },
+        "gap": {
+          "type": "integer",
+          "description": "Inter-packet gap in microseconds. Default: 0",
+          "minimum": 0,
+          "default": 0
+        }
+      },
       "additionalProperties": false
     }
   },

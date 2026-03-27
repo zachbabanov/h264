@@ -18,6 +18,7 @@ namespace config::fields {
     static constexpr std::string_view LOG_SECTION{"log"};
     static constexpr std::string_view SERVER_SECTION{"server"};
     static constexpr std::string_view GENERAL_SECTION{"general"};
+    static constexpr std::string_view PACKET_SECTION{"packet"};
     static constexpr std::string_view PLAYER_SECTION{"player"};
     static constexpr std::string_view STAT_SECTION{"statistics"};
 
@@ -25,6 +26,8 @@ namespace config::fields {
     static constexpr std::string_view PORT{"port"};
 
     static constexpr std::string_view ENCODING_MODE{"encoded"};
+    static constexpr std::string_view PACKETS_AMOUNT{"amount"};
+    static constexpr std::string_view PACKET_GAP{"gap"};
 
     static constexpr std::string_view STREAM_SOURCE{"source"};
 

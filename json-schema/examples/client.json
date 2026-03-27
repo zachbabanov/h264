@@ -1,0 +1,19 @@
+{
+  "server": {
+    "ip": "127.0.0.1",
+    "port": 8001
+  },
+  "general": {
+    "port": 8000,
+    "source": "./video/TestSample.mp4"
+  },
+  "packet": {
+    "encoded": true,
+    "amount": 64,
+    "gap": 1
+  },
+  "log": {
+    "path": "./log/client.log",
+    "level": 0
+  }
+}
