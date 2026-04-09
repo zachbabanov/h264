@@ -31,7 +31,7 @@ int main() {
     SocketInterface socket(serverIp, serverPort, ownPort);
     Logger::Instance().Info("Socket created");
 
-    rscoder::Encoder::Encoder encoder(8);
+    rscoder::Encoder::Encoder encoder;
     Logger::Instance().Info("Encoder created with 8 cells");
 
     std::thread readerThread([&] {
